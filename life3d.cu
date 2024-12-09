@@ -5,6 +5,7 @@
  * 邮箱: voyage@mail.ustc.edu.cn
  ------------------------------------------------*/
 
+#include <cuda_runtime.h>
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -45,35 +46,59 @@ void print_universe(int N, char* universe) {
 }
 
 // 核心计算代码，将世界向前推进T个时刻
-void life3d_run(int N, char* universe, int T) {
-    char* next = (char*)malloc(N * N * N);
-    for (int t = 0; t < T; t++) {
-        // outerloop: iter universe
-        for (int x = 0; x < N; x++)
-            for (int y = 0; y < N; y++)
-                for (int z = 0; z < N; z++) {
-                    // inner loop: stencil
-                    int alive = 0;
-                    for (int dx = -1; dx <= 1; dx++)
-                        for (int dy = -1; dy <= 1; dy++)
-                            for (int dz = -1; dz <= 1; dz++) {
-                                if (dx == 0 && dy == 0 && dz == 0)
-                                    continue;
-                                int nx = (x + dx + N) % N;
-                                int ny = (y + dy + N) % N;
-                                int nz = (z + dz + N) % N;
-                                alive += AT(nx, ny, nz);
-                            }
-                    if (AT(x, y, z) && (alive < 5 || alive > 7))
-                        next[x * N * N + y * N + z] = 0;
-                    else if (!AT(x, y, z) && alive == 6)
-                        next[x * N * N + y * N + z] = 1;
-                    else
-                        next[x * N * N + y * N + z] = AT(x, y, z);
-                }
-        memcpy(universe, next, N * N * N);
+__global__ void life3d_kernel(int N, char* universe, char* next) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (x >= N || y >= N || z >= N)
+        return;
+
+    int alive = 0;
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dy == 0 && dz == 0)
+                    continue;
+                int nx = (x + dx + N) % N;
+                int ny = (y + dy + N) % N;
+                int nz = (z + dz + N) % N;
+                alive += AT(nx, ny, nz);
+            }
+        }
     }
-    free(next);
+    int idx = x * N * N + y * N + z;
+    if (AT(x, y, z) && (alive < 5 || alive > 7))
+        next[idx] = 0;
+    else if (!AT(x, y, z) && alive == 6)
+        next[idx] = 1;
+    else
+        next[idx] = AT(x, y, z);
+}
+
+void life3d_run(int N, char* universe, int T) {
+    char *d_universe, *d_next;
+    cudaMalloc(&d_universe, N * N * N);
+    cudaMalloc(&d_next, N * N * N);
+    cudaMemcpy(d_universe, universe, N * N * N, cudaMemcpyHostToDevice);
+
+    dim3 threadsPerBlock(8, 8, 8);
+    dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                   (N + threadsPerBlock.y - 1) / threadsPerBlock.y,
+                   (N + threadsPerBlock.z - 1) / threadsPerBlock.z);
+    for (int t = 0; t < T; t++) {
+        life3d_kernel<<<numBlocks, threadsPerBlock>>>(N, d_universe, d_next);
+        cudaDeviceSynchronize();
+
+        char* temp = d_universe;
+        d_universe = d_next;
+        d_next = temp;
+    }
+
+    cudaMemcpy(universe, d_universe, N * N * N, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_universe);
+    cudaFree(d_next);
 }
 
 // 读取输入文件
