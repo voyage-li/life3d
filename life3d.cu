@@ -47,6 +47,8 @@ void print_universe(int N, char* universe) {
 
 // 核心计算代码，将世界向前推进T个时刻
 __global__ void life3d_kernel(int N, char* universe, char* next) {
+    __shared__ char shared_universe[10][10][10];
+
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -54,26 +56,88 @@ __global__ void life3d_kernel(int N, char* universe, char* next) {
     if (x >= N || y >= N || z >= N)
         return;
 
+    int lx = threadIdx.x + 1;
+    int ly = threadIdx.y + 1;
+    int lz = threadIdx.z + 1;
+
+    shared_universe[lx][ly][lz] = AT(x, y, z);
+
+    if (lx == 1)
+        shared_universe[0][ly][lz] = AT((x - 1 + N) % N, y, z);
+    if (lx == blockDim.x)
+        shared_universe[blockDim.x + 1][ly][lz] = AT((x + 1) % N, y, z);
+    if (ly == 1)
+        shared_universe[lx][0][lz] = AT(x, (y - 1 + N) % N, z);
+    if (ly == blockDim.y)
+        shared_universe[lx][blockDim.y + 1][lz] = AT(x, (y + 1) % N, z);
+    if (lz == 1)
+        shared_universe[lx][ly][0] = AT(x, y, (z - 1 + N) % N);
+    if (lz == blockDim.z)
+        shared_universe[lx][ly][blockDim.z + 1] = AT(x, y, (z + 1) % N);
+
+    if (lx == 1 && ly == 1)
+        shared_universe[0][0][lz] = AT((x - 1 + N) % N, (y - 1 + N) % N, z);
+    if (lx == 1 && ly == blockDim.y)
+        shared_universe[0][blockDim.y + 1][lz] = AT((x - 1 + N) % N, (y + 1) % N, z);
+    if (lx == 1 && lz == 1)
+        shared_universe[0][ly][0] = AT((x - 1 + N) % N, y, (z - 1 + N) % N);
+    if (lx == 1 && lz == blockDim.z)
+        shared_universe[0][ly][blockDim.z + 1] = AT((x - 1 + N) % N, y, (z + 1) % N);
+
+    if (lx == blockDim.x && ly == 1)
+        shared_universe[blockDim.x + 1][0][lz] = AT((x + 1) % N, (y - 1 + N) % N, z);
+    if (lx == blockDim.x && ly == blockDim.y)
+        shared_universe[blockDim.x + 1][blockDim.y + 1][lz] = AT((x + 1) % N, (y + 1) % N, z);
+    if (lx == blockDim.x && lz == 1)
+        shared_universe[blockDim.x + 1][ly][0] = AT((x + 1) % N, y, (z - 1 + N) % N);
+    if (lx == blockDim.x && lz == blockDim.z)
+        shared_universe[blockDim.x + 1][ly][blockDim.z + 1] = AT((x + 1) % N, y, (z + 1) % N);
+
+    if (ly == 1 && lz == 1)
+        shared_universe[lx][0][0] = AT(x, (y - 1 + N) % N, (z - 1 + N) % N);
+    if (ly == 1 && lz == blockDim.z)
+        shared_universe[lx][0][blockDim.z + 1] = AT(x, (y - 1 + N) % N, (z + 1) % N);
+    if (ly == blockDim.y && lz == 1)
+        shared_universe[lx][blockDim.y + 1][0] = AT(x, (y + 1) % N, (z - 1 + N) % N);
+    if (ly == blockDim.y && lz == blockDim.z)
+        shared_universe[lx][blockDim.y + 1][blockDim.z + 1] = AT(x, (y + 1) % N, (z + 1) % N);
+
+    if (lx == 1 && ly == 1 && lz == 1)
+        shared_universe[0][0][0] = AT((x - 1 + N) % N, (y - 1 + N) % N, (z - 1 + N) % N);
+    if (lx == 1 && ly == 1 && lz == blockDim.z)
+        shared_universe[0][0][blockDim.z + 1] = AT((x - 1 + N) % N, (y - 1 + N) % N, (z + 1) % N);
+    if (lx == 1 && ly == blockDim.y && lz == 1)
+        shared_universe[0][blockDim.y + 1][0] = AT((x - 1 + N) % N, (y + 1) % N, (z - 1 + N) % N);
+    if (lx == 1 && ly == blockDim.y && lz == blockDim.z)
+        shared_universe[0][blockDim.y + 1][blockDim.z + 1] = AT((x - 1 + N) % N, (y + 1) % N, (z + 1) % N);
+    if (lx == blockDim.x && ly == 1 && lz == 1)
+        shared_universe[blockDim.x + 1][0][0] = AT((x + 1) % N, (y - 1 + N) % N, (z - 1 + N) % N);
+    if (lx == blockDim.x && ly == 1 && lz == blockDim.z)
+        shared_universe[blockDim.x + 1][0][blockDim.z + 1] = AT((x + 1) % N, (y - 1 + N) % N, (z + 1) % N);
+    if (lx == blockDim.x && ly == blockDim.y && lz == 1)
+        shared_universe[blockDim.x + 1][blockDim.y + 1][0] = AT((x + 1) % N, (y + 1) % N, (z - 1 + N) % N);
+    if (lx == blockDim.x && ly == blockDim.y && lz == blockDim.z)
+        shared_universe[blockDim.x + 1][blockDim.y + 1][blockDim.z + 1] = AT((x + 1) % N, (y + 1) % N, (z + 1) % N);
+
+    __syncthreads();
+
     int alive = 0;
     for (int dx = -1; dx <= 1; dx++) {
         for (int dy = -1; dy <= 1; dy++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dy == 0 && dz == 0)
                     continue;
-                int nx = (x + dx + N) % N;
-                int ny = (y + dy + N) % N;
-                int nz = (z + dz + N) % N;
-                alive += AT(nx, ny, nz);
+                alive += shared_universe[lx + dx][ly + dy][lz + dz];
             }
         }
     }
     int idx = x * N * N + y * N + z;
-    if (AT(x, y, z) && (alive < 5 || alive > 7))
+    if (shared_universe[lx][ly][lz] && (alive < 5 || alive > 7))
         next[idx] = 0;
-    else if (!AT(x, y, z) && alive == 6)
+    else if (!shared_universe[lx][ly][lz] && alive == 6)
         next[idx] = 1;
     else
-        next[idx] = AT(x, y, z);
+        next[idx] = shared_universe[lx][ly][lz];
 }
 
 void life3d_run(int N, char* universe, int T) {
