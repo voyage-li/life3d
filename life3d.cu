@@ -13,6 +13,7 @@
 #include <string>
 
 #define AT(x, y, z) universe[(x) * N * N + (y) * N + z]
+#define AT_BOUNDARY(x, y, z) AT((x + N) % N, (y + N) % N, (z + N) % N)
 
 using std::cin, std::cout, std::endl;
 using std::ifstream, std::ofstream;
@@ -62,62 +63,28 @@ __global__ void life3d_kernel(int N, char* universe, char* next) {
 
     shared_universe[lx][ly][lz] = AT(x, y, z);
 
-    if (lx == 1)
-        shared_universe[0][ly][lz] = AT((x - 1 + N) % N, y, z);
-    if (lx == blockDim.x)
-        shared_universe[blockDim.x + 1][ly][lz] = AT((x + 1) % N, y, z);
-    if (ly == 1)
-        shared_universe[lx][0][lz] = AT(x, (y - 1 + N) % N, z);
-    if (ly == blockDim.y)
-        shared_universe[lx][blockDim.y + 1][lz] = AT(x, (y + 1) % N, z);
-    if (lz == 1)
-        shared_universe[lx][ly][0] = AT(x, y, (z - 1 + N) % N);
-    if (lz == blockDim.z)
-        shared_universe[lx][ly][blockDim.z + 1] = AT(x, y, (z + 1) % N);
+    const int dx[3] = {-1, 0, 1};
+    const int dy[3] = {-1, 0, 1};
+    const int dz[3] = {-1, 0, 1};
+    const int sx[3] = {0, lx, (int)blockDim.x + 1};
+    const int sy[3] = {0, ly, (int)blockDim.y + 1};
+    const int sz[3] = {0, lz, (int)blockDim.z + 1};
 
-    if (lx == 1 && ly == 1)
-        shared_universe[0][0][lz] = AT((x - 1 + N) % N, (y - 1 + N) % N, z);
-    if (lx == 1 && ly == blockDim.y)
-        shared_universe[0][blockDim.y + 1][lz] = AT((x - 1 + N) % N, (y + 1) % N, z);
-    if (lx == 1 && lz == 1)
-        shared_universe[0][ly][0] = AT((x - 1 + N) % N, y, (z - 1 + N) % N);
-    if (lx == 1 && lz == blockDim.z)
-        shared_universe[0][ly][blockDim.z + 1] = AT((x - 1 + N) % N, y, (z + 1) % N);
-
-    if (lx == blockDim.x && ly == 1)
-        shared_universe[blockDim.x + 1][0][lz] = AT((x + 1) % N, (y - 1 + N) % N, z);
-    if (lx == blockDim.x && ly == blockDim.y)
-        shared_universe[blockDim.x + 1][blockDim.y + 1][lz] = AT((x + 1) % N, (y + 1) % N, z);
-    if (lx == blockDim.x && lz == 1)
-        shared_universe[blockDim.x + 1][ly][0] = AT((x + 1) % N, y, (z - 1 + N) % N);
-    if (lx == blockDim.x && lz == blockDim.z)
-        shared_universe[blockDim.x + 1][ly][blockDim.z + 1] = AT((x + 1) % N, y, (z + 1) % N);
-
-    if (ly == 1 && lz == 1)
-        shared_universe[lx][0][0] = AT(x, (y - 1 + N) % N, (z - 1 + N) % N);
-    if (ly == 1 && lz == blockDim.z)
-        shared_universe[lx][0][blockDim.z + 1] = AT(x, (y - 1 + N) % N, (z + 1) % N);
-    if (ly == blockDim.y && lz == 1)
-        shared_universe[lx][blockDim.y + 1][0] = AT(x, (y + 1) % N, (z - 1 + N) % N);
-    if (ly == blockDim.y && lz == blockDim.z)
-        shared_universe[lx][blockDim.y + 1][blockDim.z + 1] = AT(x, (y + 1) % N, (z + 1) % N);
-
-    if (lx == 1 && ly == 1 && lz == 1)
-        shared_universe[0][0][0] = AT((x - 1 + N) % N, (y - 1 + N) % N, (z - 1 + N) % N);
-    if (lx == 1 && ly == 1 && lz == blockDim.z)
-        shared_universe[0][0][blockDim.z + 1] = AT((x - 1 + N) % N, (y - 1 + N) % N, (z + 1) % N);
-    if (lx == 1 && ly == blockDim.y && lz == 1)
-        shared_universe[0][blockDim.y + 1][0] = AT((x - 1 + N) % N, (y + 1) % N, (z - 1 + N) % N);
-    if (lx == 1 && ly == blockDim.y && lz == blockDim.z)
-        shared_universe[0][blockDim.y + 1][blockDim.z + 1] = AT((x - 1 + N) % N, (y + 1) % N, (z + 1) % N);
-    if (lx == blockDim.x && ly == 1 && lz == 1)
-        shared_universe[blockDim.x + 1][0][0] = AT((x + 1) % N, (y - 1 + N) % N, (z - 1 + N) % N);
-    if (lx == blockDim.x && ly == 1 && lz == blockDim.z)
-        shared_universe[blockDim.x + 1][0][blockDim.z + 1] = AT((x + 1) % N, (y - 1 + N) % N, (z + 1) % N);
-    if (lx == blockDim.x && ly == blockDim.y && lz == 1)
-        shared_universe[blockDim.x + 1][blockDim.y + 1][0] = AT((x + 1) % N, (y + 1) % N, (z - 1 + N) % N);
-    if (lx == blockDim.x && ly == blockDim.y && lz == blockDim.z)
-        shared_universe[blockDim.x + 1][blockDim.y + 1][blockDim.z + 1] = AT((x + 1) % N, (y + 1) % N, (z + 1) % N);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            for (int k = 0; k < 3; k++) {
+                if (i == 1 && j == 1 && k == 1)
+                    continue;
+                if ((i == 0 && lx != 1) || (i == 2 && lx != blockDim.x) || (j == 0 && ly != 1) || (j == 2 && ly != blockDim.y) || (k == 0 && lz != 1) || (k == 2 && lz != blockDim.z))
+                    continue;
+                if ((i == 0 && lx == 1) || (i == 2 && lx == blockDim.x) ||
+                    (j == 0 && ly == 1) || (j == 2 && ly == blockDim.y) ||
+                    (k == 0 && lz == 1) || (k == 2 && lz == blockDim.z)) {
+                    shared_universe[sx[i]][sy[j]][sz[k]] = AT_BOUNDARY(x + dx[i], y + dy[j], z + dz[k]);
+                }
+            }
+        }
+    }
 
     __syncthreads();
 
